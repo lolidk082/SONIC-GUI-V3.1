@@ -1,0 +1,133 @@
+-- SONICGUI V2.1 WIDE SECTIONAL EDITION
+local player = game.Players.LocalPlayer
+local UIS, runService, tweenService = game:GetService("UserInputService"), game:GetService("RunService"), game:GetService("TweenService")
+local mouse = player:GetMouse()
+
+-- STATE
+local flying, godMode, infJumpEnabled, flinging, catchingFire, clickTPEnabled = false, false, false, false, false, false
+local upVal, downVal, flySpeed = 0, 0, 70
+
+local function getChar()
+    local char = player.Character or player.CharacterAdded:Wait()
+    return char, char:FindFirstChildOfClass("Humanoid"), char:FindFirstChild("HumanoidRootPart")
+end
+
+-- UI ROOT
+local sgui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+sgui.Name = "SonicGUI_Wide"; sgui.ResetOnSpawn = false
+
+local mainFrame = Instance.new("Frame", sgui)
+mainFrame.Size, mainFrame.Position = UDim2.new(0, 600, 0, 400), UDim2.new(0.5, -300, 0.5, -200)
+mainFrame.BackgroundColor3, mainFrame.Active, mainFrame.Draggable = Color3.fromRGB(15, 15, 15), true, true
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 12)
+local stroke = Instance.new("UIStroke", mainFrame); stroke.Color, stroke.Thickness = Color3.new(1, 0, 0), 2
+
+-- SCROLLING CONTAINER
+local scroll = Instance.new("ScrollingFrame", mainFrame)
+scroll.Size, scroll.Position = UDim2.new(1, -20, 1, -20), UDim2.new(0, 10, 0, 10)
+scroll.BackgroundTransparency, scroll.ScrollBarThickness = 1, 2
+local layout = Instance.new("UIListLayout", scroll); layout.Padding = UDim.new(0, 15)
+
+-- SECTION GENERATOR
+local function createSection(name)
+    local section = Instance.new("Frame", scroll)
+    section.Size, section.BackgroundTransparency = UDim2.new(1, -10, 0, 30), 1
+    local title = Instance.new("TextLabel", section)
+    title.Text, title.Size = "--- " .. name:upper() .. " ---", UDim2.new(1, 0, 1, 0)
+    title.TextColor3, title.Font, title.TextSize = Color3.new(1, 0, 0), Enum.Font.GothamBold, 14
+    title.BackgroundTransparency = 1
+    
+    local grid = Instance.new("UIGridLayout", scroll)
+    grid.CellSize, grid.CellPadding = UDim2.new(0, 180, 0, 45), UDim2.new(0, 10, 0, 10)
+end
+
+-- SLIDING TOGGLE GENERATOR
+local function createToggle(name, callback)
+    local base = Instance.new("Frame", scroll)
+    base.BackgroundColor3, base.Size = Color3.fromRGB(30, 30, 30), UDim2.new(0, 180, 0, 45)
+    Instance.new("UICorner", base).CornerRadius = UDim.new(0, 8)
+    
+    local lab = Instance.new("TextLabel", base)
+    lab.Text, lab.Size, lab.Position = name, UDim2.new(0.6, 0, 1, 0), UDim2.new(0, 10, 0, 0)
+    lab.TextColor3, lab.Font, lab.TextSize, lab.TextXAlignment = Color3.new(1,1,1), Enum.Font.Gotham, 12, Enum.TextXAlignment.Left
+    lab.BackgroundTransparency = 1
+
+    local switchBase = Instance.new("TextButton", base)
+    switchBase.Size, switchBase.Position = UDim2.new(0, 40, 0, 20), UDim2.new(1, -50, 0.5, -10)
+    switchBase.BackgroundColor3, switchBase.Text = Color3.fromRGB(50, 50, 50), ""
+    Instance.new("UICorner", switchBase).CornerRadius = UDim.new(1, 0)
+
+    local circle = Instance.new("Frame", switchBase)
+    circle.Size, circle.Position = UDim2.new(0, 16, 0, 16), UDim2.new(0, 2, 0.5, -8)
+    circle.BackgroundColor3 = Color3.new(1, 1, 1)
+    Instance.new("UICorner", circle).CornerRadius = UDim.new(1, 0)
+
+    local toggled = false
+    switchBase.MouseButton1Click:Connect(function()
+        toggled = not toggled
+        local targetPos = toggled and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+        local targetCol = toggled and Color3.new(1, 0, 0) or Color3.fromRGB(50, 50, 50)
+        
+        tweenService:Create(circle, TweenInfo.new(0.2), {Position = targetPos}):Play()
+        tweenService:Create(switchBase, TweenInfo.new(0.2), {BackgroundColor3 = targetCol}):Play()
+        callback(toggled)
+    end)
+end
+
+-- MOBILE VERTICAL BUTTONS (Only for Fly)
+local function createVBtn(name, pos, cb)
+    local b = Instance.new("TextButton", sgui); b.Visible = false
+    b.Size, b.Position, b.Text = UDim2.new(0, 60, 0, 60), pos, name
+    b.BackgroundColor3, b.TextColor3 = Color3.fromRGB(20, 20, 20), Color3.new(1, 0, 0)
+    Instance.new("UIStroke", b).Color = Color3.new(1, 0, 0)
+    b.MouseButton1Down:Connect(function() cb(true) end); b.MouseButton1Up:Connect(function() cb(false) end)
+    return b
+end
+local upBtn = createVBtn("▲", UDim2.new(1, -70, 0.5, -70), function(v) upVal = v and 1 or 0 end)
+local downBtn = createVBtn("▼", UDim2.new(1, -70, 0.5, 10), function(v) downVal = v and 1 or 0 end)
+
+-- SECTIONS & EXPLOITS
+createSection("Movement")
+createToggle("Fly (Mobile)", function(v)
+    flying = v; upBtn.Visible, downBtn.Visible = v, v
+    local c, hum, root = getChar()
+    if v and root then
+        local bv = Instance.new("BodyVelocity", root); bv.MaxForce = Vector3.new(1,1,1)*1e9
+        task.spawn(function()
+            while flying and root.Parent do
+                bv.Velocity = (hum.MoveDirection * flySpeed) + Vector3.new(0, (upVal - downVal) * flySpeed, 0)
+                hum.PlatformStand = true; task.wait()
+            end
+            if hum then hum.PlatformStand = false end; bv:Destroy()
+        end)
+    end
+end)
+createToggle("Infinite Jump", function(v) infJumpEnabled = v end)
+createToggle("Click TP", function(v) clickTPEnabled = v end)
+
+createSection("Combat")
+createToggle("Fling", function(v)
+    flinging = v
+    local _, _, r = getChar()
+    if v and r then
+        local av = Instance.new("AngularVelocity", r); av.MaxTorque, av.AngularVelocity = 1e9, Vector3.new(0, 9999, 0)
+        av.Attachment0 = r:FindFirstChild("RootRigAttachment") or Instance.new("Attachment", r)
+        task.spawn(function()
+            while flinging and r.Parent do
+                local t = getNearestPlayer()
+                if t and t.Character and t.Character:FindFirstChild("HumanoidRootPart") then r.CFrame = t.Character.HumanoidRootPart.CFrame end
+                runService.Heartbeat:Wait()
+            end
+            av:Destroy()
+        end)
+    end
+end)
+createToggle("Catching Fire", function(v) catchingFire = v end)
+
+createSection("Protection")
+createToggle("God Mode", function(v) godMode = v end)
+
+-- UTILS
+task.spawn(function() while task.wait(0.1) do if godMode then local _, h = getChar() if h then h.Health = h.MaxHealth end end end end)
+UIS.JumpRequest:Connect(function() if infJumpEnabled then local _, h = getChar() if h then h:ChangeState("Jumping") end end end)
+mouse.Button1Down:Connect(function() if clickTPEnabled and mouse.Hit then local _, _, r = getChar() if r then r.CFrame = mouse.Hit + Vector3.new(0, 3, 0) end end end)
