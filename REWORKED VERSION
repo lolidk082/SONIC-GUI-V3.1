@@ -1,0 +1,206 @@
+-- SONICGUI V2. FINAL RED NEON WIDE EDITION
+local player = game.Players.LocalPlayer
+local UIS = game:GetService("UserInputService")
+local runService = game:GetService("RunService")
+local mouse = player:GetMouse()
+
+-- 1. STATE VARIABLES
+local flying, godMode, infJumpEnabled, flinging, catchingFire, clickTPEnabled = false, false, false, false, false, false
+local upVal, downVal = 0, 0 
+
+local function getChar()
+    local char = player.Character or player.CharacterAdded:Wait()
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    return char, hum, root
+end
+
+local function getNearestPlayer()
+    local closestPlayer, shortestDistance = nil, math.huge
+    local _, _, myRoot = getChar()
+    if not myRoot then return nil end
+    for _, p in pairs(game.Players:GetPlayers()) do
+        if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local dist = (myRoot.Position - p.Character.HumanoidRootPart.Position).Magnitude
+            if dist < shortestDistance then shortestDistance, closestPlayer = dist, p end
+        end
+    end
+    return closestPlayer
+end
+
+-- 2. UI SETUP (RED NEON - WIDENED)
+local sgui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+sgui.Name = "SonicGUI_Final"
+sgui.ResetOnSpawn = false
+
+local mainFrame = Instance.new("Frame", sgui)
+-- WIDENED TO 600
+mainFrame.Size, mainFrame.Position = UDim2.new(0, 600, 0, 350), UDim2.new(0.5, -300, 0.5, -175)
+mainFrame.BackgroundColor3, mainFrame.Active, mainFrame.Draggable = Color3.fromRGB(20, 20, 20), true, true
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 10)
+
+local mainStroke = Instance.new("UIStroke", mainFrame)
+mainStroke.Color, mainStroke.Thickness = Color3.fromRGB(255, 0, 0), 2
+
+-- THE SIDE TOGGLE BUTTON (ORIGINAL SYSTEM)
+local toggleBtn = Instance.new("TextButton", sgui)
+toggleBtn.Size, toggleBtn.Position = UDim2.new(0, 80, 0, 30), UDim2.new(0, 10, 0.5, 0)
+toggleBtn.Text, toggleBtn.BackgroundColor3 = "SONIC: ON", Color3.fromRGB(30, 30, 30)
+toggleBtn.TextColor3, toggleBtn.Font = Color3.new(1, 1, 1), Enum.Font.GothamBold
+Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 6)
+local tStroke = Instance.new("UIStroke", toggleBtn)
+tStroke.Color = Color3.fromRGB(255, 0, 0)
+
+toggleBtn.MouseButton1Click:Connect(function() 
+    mainFrame.Visible = not mainFrame.Visible 
+    toggleBtn.Text = mainFrame.Visible and "SONIC: ON" or "SONIC: OFF"
+end)
+
+-- MOBILE VERTICAL BUTTONS
+local function createVerticalBtn(name, pos, callback)
+    local b = Instance.new("TextButton", sgui)
+    b.Size, b.Position = UDim2.new(0, 65, 0, 65), pos
+    b.Text, b.BackgroundColor3 = name, Color3.fromRGB(30, 30, 30)
+    b.TextColor3, b.Font, b.TextSize = Color3.new(1, 0, 0), Enum.Font.GothamBold, 25
+    b.Visible = false
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 12)
+    local s = Instance.new("UIStroke", b)
+    s.Color, s.Thickness = Color3.fromRGB(255, 0, 0), 2
+    b.MouseButton1Down:Connect(function() callback(true) end)
+    b.MouseButton1Up:Connect(function() callback(false) end)
+    return b
+end
+local upBtn = createVerticalBtn("▲", UDim2.new(1, -80, 0.5, -75), function(v) upVal = v and 1 or 0 end)
+local downBtn = createVerticalBtn("▼", UDim2.new(1, -80, 0.5, 5), function(v) downVal = v and 1 or 0 end)
+
+local speedInput = Instance.new("TextBox", mainFrame)
+speedInput.Size, speedInput.Position = UDim2.new(1, -40, 0, 35), UDim2.new(0, 20, 0, 45)
+speedInput.PlaceholderText, speedInput.BackgroundColor3 = "Enter Speed...", Color3.fromRGB(30, 30, 30)
+speedInput.TextColor3, speedInput.Font = Color3.new(1, 1, 1), Enum.Font.GothamSemibold
+Instance.new("UICorner", speedInput).CornerRadius = UDim.new(0, 6)
+local iStroke = Instance.new("UIStroke", speedInput)
+iStroke.Color = Color3.fromRGB(255, 0, 0)
+
+speedInput.FocusLost:Connect(function(ep) 
+    if ep and tonumber(speedInput.Text) then 
+        local _,h = getChar() 
+        if h then h.WalkSpeed = tonumber(speedInput.Text) end 
+    end 
+end)
+
+local container = Instance.new("ScrollingFrame", mainFrame)
+container.Size, container.Position = UDim2.new(1, -20, 1, -100), UDim2.new(0, 10, 0, 90)
+container.BackgroundTransparency, container.AutomaticCanvasSize = 1, Enum.AutomaticSize.Y
+container.ScrollBarThickness = 4
+
+local grid = Instance.new("UIGridLayout", container)
+grid.CellSize, grid.CellPadding = UDim2.new(0, 135, 0, 45), UDim2.new(0, 10, 0, 10)
+
+-- ORIGINAL BUTTON FUNCTION
+local function createBtn(name, color, callback)
+    local btn = Instance.new("TextButton", container)
+    btn.BackgroundColor3, btn.Text, btn.TextColor3 = Color3.fromRGB(40, 40, 40), name, Color3.new(1, 1, 1)
+    btn.Font, btn.TextSize = Enum.Font.GothamSemibold, 11
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    local bStroke = Instance.new("UIStroke", btn)
+    bStroke.Color = color
+    btn.MouseButton1Click:Connect(function() callback(btn) end)
+end
+
+-- NEW SECTION FUNCTION (RETAINING ORIGINAL STYLE)
+local function createSection(text)
+    local sectionLab = Instance.new("TextLabel", container)
+    sectionLab.Size = UDim2.new(1, 0, 0, 30)
+    sectionLab.BackgroundTransparency = 1
+    sectionLab.Text = "--- " .. text .. " ---"
+    sectionLab.TextColor3 = Color3.new(1, 0, 0)
+    sectionLab.Font = Enum.Font.GothamBold
+    sectionLab.TextSize = 14
+end
+
+-- 3. APPLY ALL FEATURES IN SECTIONS
+createSection("MOVEMENT")
+createBtn("Fly (Mobile)", Color3.new(1, 1, 1), function() 
+    flying = not flying 
+    upBtn.Visible, downBtn.Visible = flying, flying
+    local _, hum, r = getChar() 
+    if flying and r then 
+        local bv = Instance.new("BodyVelocity", r)
+        bv.MaxForce = Vector3.new(1,1,1)*math.huge
+        task.spawn(function() 
+            while flying and r.Parent do 
+                bv.Velocity = (hum.MoveDirection * 70) + (Vector3.new(0, (upVal - downVal), 0) * 70)
+                hum.PlatformStand = true
+                task.wait() 
+            end 
+            if hum then hum.PlatformStand = false end
+            bv:Destroy() 
+        end)
+    end
+end)
+createBtn("Inf Jump (On)", Color3.fromRGB(255, 170, 0), function() infJumpEnabled = not infJumpEnabled end)
+createBtn("Click TP (Off)", Color3.fromRGB(0, 170, 255), function(self)
+    clickTPEnabled = not clickTPEnabled
+    self.Text = clickTPEnabled and "Click TP (On)" or "Click TP (Off)"
+end)
+createBtn("Reset Speed", Color3.new(0.5, 0.5, 0.5), function() local _, h = getChar() if h then h.WalkSpeed = 16 end end)
+
+createSection("COMBAT")
+createBtn("Fling (Toggle)", Color3.fromRGB(255, 0, 255), function()
+    flinging = not flinging
+    local _, _, root = getChar()
+    if flinging and root then
+        local av = Instance.new("AngularVelocity", root)
+        av.MaxTorque, av.AngularVelocity = math.huge, Vector3.new(0, 999999, 0)
+        av.Attachment0 = root:FindFirstChild("RootRigAttachment") or Instance.new("Attachment", root)
+        task.spawn(function()
+            while flinging and root.Parent do
+                local t = getNearestPlayer()
+                if t and t.Character and t.Character:FindFirstChild("HumanoidRootPart") then root.CFrame = t.Character.HumanoidRootPart.CFrame end
+                runService.Heartbeat:Wait()
+            end
+            av:Destroy()
+        end)
+    end
+end)
+createBtn("Sonic Pistol", Color3.fromRGB(0, 255, 150), function()
+    local gun = Instance.new("Tool", player.Backpack)
+    gun.Name = "Sonic Pistol"; local handle = Instance.new("Part", gun)
+    handle.Name = "Handle"; handle.Size = Vector3.new(0.5, 0.5, 1.5); handle.Color = Color3.fromRGB(255, 0, 0)
+    gun.Activated:Connect(function()
+        local target = mouse.Target
+        if target and target.Parent:FindFirstChild("Humanoid") then
+            local re = game:GetService("ReplicatedStorage"):FindFirstChild("DamageEvent")
+            if re then re:FireServer(target.Parent.Humanoid, 30) end
+        end
+    end)
+end)
+
+createSection("MISC & RISKY")
+createBtn("Catching Fire", Color3.fromRGB(255, 85, 0), function()
+    catchingFire = not catchingFire
+    task.spawn(function()
+        while catchingFire do
+            for _, p in pairs(game.Players:GetPlayers()) do
+                if p ~= player and p.Character then
+                    local r = p.Character:FindFirstChild("HumanoidRootPart")
+                    if r and not r:FindFirstChild("SonicFire") then Instance.new("Fire", r).Name = "SonicFire" end
+                end
+            end
+            task.wait(1)
+        end
+    end)
+end)
+createBtn("God Mode", Color3.new(0, 1, 0), function() godMode = not godMode end)
+createBtn("Self Destruct", Color3.new(1, 0, 0), function()
+    local c, h, r = getChar()
+    task.spawn(function()
+        for i=1,10 do for _,p in ipairs(c:GetDescendants()) do if p:IsA("BasePart") then p.Color = Color3.new(1,0,0) end end task.wait(.15) end
+        h.Health = 0
+    end)
+end)
+
+-- Loops
+task.spawn(function() while task.wait(0.1) do if godMode then local _, h = getChar() if h then h.Health = h.MaxHealth end end end end)
+UIS.JumpRequest:Connect(function() if infJumpEnabled then local _, h = getChar() if h then h:ChangeState("Jumping") end end end)
+mouse.Button1Down:Connect(function() if clickTPEnabled and mouse.Hit then local _, _, r = getChar() if r then r.CFrame = CFrame.new(mouse.Hit.Position + Vector3.new(0,3,0)) end end end)
